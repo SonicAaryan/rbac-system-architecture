@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.user.user_controller import UserController,SignupRequest ,LoginRequest
+from app.user.user_controller import UserController,SignupRequest ,LoginRequest, LogoutRequest
 # from app.user.user_middleware import get_current_user
 
 router = APIRouter()
@@ -13,3 +13,6 @@ async def login(login_data:LoginRequest):
 async def signup(signup_data: SignupRequest):
     return await UserController.signup(signup_data)
 
+@router.post("/logout")
+async def logout(logout_data: LogoutRequest):  # Accept LogoutRequest as request body
+    return await UserController.logout(logout_data)

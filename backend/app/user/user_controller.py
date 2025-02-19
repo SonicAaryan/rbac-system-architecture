@@ -17,12 +17,15 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+class LogoutRequest(BaseModel):
+    token:str
+
 class UserController:
     @staticmethod
     async def login(login_data:LoginRequest):
         """Handles user login, verifies credentials, and generates a JWT token."""
         user = await UserModel.get_user_by_email(login_data.email)
-        print("IN LOGIN API")
+        # print("IN LOGIN API")
         if not user or not AuthUtils.verify_password(login_data.password, user["password"]):
             raise HTTPException(status_code=401, detail="Invalid email or password")
 
@@ -50,5 +53,23 @@ class UserController:
 
         if "error" in response:
             raise HTTPException(status_code=500, detail=response["error"])
+
+        return response
+    
+    @staticmethod
+    async def logout(logout_data: LogoutRequest):
+        """Handles user logout by deleting the session token from the database."""
+
+        # ✅ Debugging Step: Print received token
+        print("Received logout request with token:", logout_data.token)
+
+        # ✅ Ensure token is passed correctly
+        if not logout_data.token:
+            raise HTTPException(status_code=400, detail="Token is required")
+
+        response = AuthMiddleware.logout(logout_data.token)
+
+        if "error" in response:
+            raise HTTPException(status_code=400, detail=response["error"])
 
         return response

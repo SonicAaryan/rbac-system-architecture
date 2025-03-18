@@ -17,7 +17,7 @@ class AuthMiddleware:
         INSERT INTO users (first_name, last_name, email, password, mobile, address, role, created_at, updated_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW()) RETURNING id
         """
-
+    
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -64,28 +64,28 @@ class AuthMiddleware:
         conn.close()
         return {"error": "Invalid credentials"}
 
-    @staticmethod
-    def logout(token: str):
-        """Handles user logout by deleting the session token from the database."""
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    # @staticmethod
+    # def logout(token: str):
+    #     """Handles user logout by deleting the session token from the database."""
+    #     conn = get_db_connection()
+    #     cursor = conn.cursor()
 
-        try:
-            print("Received token for logout:", token)  # ✅ Debugging
-            cursor.execute("UPDATE users SET token = NULL WHERE token=%s", (token,))
+    #     try:
+    #         print("Received token for logout:", token)  # ✅ Debugging
+    #         cursor.execute("UPDATE users SET token = NULL WHERE token=%s", (token,))
 
-            if cursor.rowcount == 0:
-                print("❌ Token not found in database")  # ✅ Debugging
-                return {"error": "Invalid token or already logged out"}
+    #         if cursor.rowcount == 0:
+    #             print("❌ Token not found in database")  # ✅ Debugging
+    #             return {"error": "Invalid token or already logged out"}
 
-            conn.commit()
-            print("✅ Token deleted successfully")  # ✅ Debugging
-            return {"message": "Logged out successfully"}
+    #         conn.commit()
+    #         print("✅ Token deleted successfully")  # ✅ Debugging
+    #         return {"message": "Logged out successfully"}
 
-        except Exception as e:
-            print("❌ Database error:", str(e))  # ✅ Debugging
-            return {"error": str(e)}
+    #     except Exception as e:
+    #         print("❌ Database error:", str(e))  # ✅ Debugging
+    #         return {"error": str(e)}
 
-        finally:
-            cursor.close()
-            conn.close()  # ✅ Ensure DB connection is closed
+    #     finally:
+    #         cursor.close()
+    #         conn.close()  # ✅ Ensure DB connection is closed

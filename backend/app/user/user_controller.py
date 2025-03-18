@@ -1,7 +1,10 @@
 from fastapi import HTTPException
+import psycopg2
 from app.user.user_model import UserModel
 from app.auth.auth_utils import AuthUtils
+from app.auth.auth_service import AuthService
 from app.auth.auth_middleware import AuthMiddleware
+from app.config.database import get_db_connection, release_db_connection
 from pydantic import BaseModel, EmailStr
 
 class SignupRequest(BaseModel):
@@ -57,19 +60,74 @@ class UserController:
         return response
     
     @staticmethod
-    async def logout(logout_data: LogoutRequest):
+    async def logout(current_user: dict):
         """Handles user logout by deleting the session token from the database."""
 
         # ✅ Debugging Step: Print received token
-        print("Received logout request with token:", logout_data.token)
+        print("Received logout request with user:", current_user)
 
         # ✅ Ensure token is passed correctly
-        if not logout_data.token:
-            raise HTTPException(status_code=400, detail="Token is required")
+        if not current_user or "id" not in current_user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
 
-        response = AuthMiddleware.logout(logout_data.token)
+        user_id = current_user["id"]
+        token = current_user.get("token","") #Get token from the current user 
+
+        response = AuthService.logout(token)
 
         if "error" in response:
             raise HTTPException(status_code=400, detail=response["error"])
 
-        return response
+        return {"message": "Logged out successfully"}
+    
+    @staticmethod
+    async def get_reports_by_user_id(user_id: int):
+        """Fetch reports for a specific user using a LEFT JOIN raw query."""
+        query = """
+        SELECT u.first_name, u.last_name, u.role,u.address, r.report_title, r.status, r.submission_date
+        FROM users u
+        LEFT JOIN reports r ON u.id = r.user_id
+        WHERE u.id = %s
+        ORDER BY r.submission_date DESC
+        """
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute(query, (user_id,))
+            rows = cursor.fetchall()
+            
+            if not rows:
+                raise HTTPException(status_code=404, detail="User or reports not found")
+            
+            # Get user details from the first row (assuming user_id is unique)
+            if rows:
+                user = {
+                    "first_name": rows[0][0],
+                    "last_name": rows[0][1],
+                    "role": rows[0][2],
+                    "address":rows[0][3],
+                    "reports":[],
+                }
+                
+                # Collect all reports into the reports list
+                for row in rows:
+                    if row[4]:  # Check if report_title exists (not None from LEFT JOIN)
+                        report = {
+                            "report_title": row[4],
+                            "status": row[5],
+                            "submission_date": row[6].isoformat() if row[6] else None
+                        }
+                        user["reports"].append(report)
+                
+                return user
+            
+            # return reports
+        except psycopg2.Error as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            cursor.close()
+            release_db_connection(conn)
+    
+    

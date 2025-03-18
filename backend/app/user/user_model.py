@@ -1,3 +1,5 @@
+from fastapi import HTTPException
+import psycopg2
 from app.config.database import get_db_connection, release_db_connection
 
 class UserModel:
@@ -48,3 +50,76 @@ class UserModel:
         finally:
             cursor.close()
             release_db_connection(conn)  # ✅ Release connection back to the pool
+            
+    @staticmethod
+    async def get_all_users_with_permissions():
+    # """Fetch all users with their role permissions using a JOIN query."""
+        query = """SELECT u.id, u.email, u.first_name, u.last_name, u.role, rp.permission_name, rp.is_allowed FROM users u LEFT JOIN role_permissions rp ON u.role = rp.role_name ORDER BY u.id, rp.permission_name"""
+    
+        conn = get_db_connection()
+        cursor = conn.cursor()
+    
+        try:
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            users = {}
+        
+            for row in rows:
+                user_id = row[0]
+                if user_id not in users:
+                    users[user_id] = {
+                        "id": row[0],
+                        "email": row[1],
+                        "first_name": row[2],
+                        "last_name": row[3],
+                        "role": row[4],
+                        "permissions": {}
+                    }
+                if row[5]:  # permission_name
+                    users[user_id]["permissions"][row[5]] = row[6]  # is_allowed
+        
+            return list(users.values())
+        except psycopg2.Error as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            cursor.close()
+            release_db_connection(conn)
+            
+    @staticmethod
+    async def get_all_users_with_permissions():
+        """Fetch all users with their role permissions using a JOIN query."""
+        query = """
+        SELECT u.id, u.email, u.first_name, u.last_name, u.role, rp.permission_name, rp.is_allowed
+        FROM users u
+        LEFT JOIN role_permissions rp ON u.role = rp.role_name
+        ORDER BY u.id, rp.permission_name
+        """
+    
+        conn = get_db_connection()
+        cursor = conn.cursor()
+    
+        try:
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            users = {}
+        
+            for row in rows:
+                user_id = row[0]
+                if user_id not in users:
+                    users[user_id] = {
+                        "id": row[0],
+                        "email": row[1],
+                        "first_name": row[2],
+                        "last_name": row[3],
+                        "role": row[4],
+                        "permissions": {}
+                    }
+                if row[5]:  # permission_name
+                    users[user_id]["permissions"][row[5]] = row[6]  # is_allowed
+        
+            return list(users.values())
+        except psycopg2.Error as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            cursor.close()
+        release_db_connection(conn)

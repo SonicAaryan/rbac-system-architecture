@@ -1,9 +1,10 @@
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
 import psycopg2
 from app.user.user_model import UserModel
 from app.auth.auth_utils import AuthUtils
 from app.auth.auth_service import AuthService
 from app.auth.auth_middleware import AuthMiddleware
+from app.user.user_middleware import get_current_user
 from app.config.database import get_db_connection, release_db_connection
 from pydantic import BaseModel, EmailStr
 
@@ -123,11 +124,43 @@ class UserController:
                 
                 return user
             
-            # return reports
         except psycopg2.Error as e:
             raise HTTPException(status_code=500, detail=str(e))
         finally:
             cursor.close()
             release_db_connection(conn)
+
+    @staticmethod
+    async def get_all_users(current_user: dict = Depends(get_current_user)):
+        # """Fetch all users (admin-only)."""
+        print(current_user)
+        if current_user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+
+        query = """SELECT id, first_name, last_name, email, mobile, address, role, created_at FROM users ORDER BY id"""
     
+        conn = get_db_connection()
+        cursor = conn.cursor()
     
+        try:
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            users = [
+                {
+                    "id": row[0],
+                    "first_name": row[1],
+                    "last_name": row[2],
+                    "email": row[3],
+                    "mobile": row[4],
+                    "address": row[5],
+                    "role": row[6],
+                    "created_at": row[7].isoformat() if row[7] else None
+                }
+                for row in rows
+            ]
+            return users
+        except psycopg2.Error as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            cursor.close()
+            release_db_connection(conn)

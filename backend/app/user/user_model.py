@@ -1,6 +1,18 @@
 from fastapi import HTTPException
 import psycopg2
+from pydantic import BaseModel
 from app.config.database import get_db_connection, release_db_connection
+
+class UpdateUserRequest(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    mobile: str | None = None
+    address: str | None = None
+    
+class CreateReportRequest(BaseModel):
+    report_title : str
+    report_content : str
+    status:str = "pending"
 
 class UserModel:
     @staticmethod

@@ -1,10 +1,11 @@
 from fastapi import Depends, HTTPException
 import psycopg2
-from app.user.user_model import UserModel
+from app.user.user_model import CreateReportRequest, UserModel
 from app.auth.auth_utils import AuthUtils
 from app.auth.auth_service import AuthService
 from app.auth.auth_middleware import AuthMiddleware
 from app.user.user_middleware import get_current_user
+from app.user.user_model import UpdateUserRequest
 from app.config.database import get_db_connection, release_db_connection
 from pydantic import BaseModel, EmailStr
 
@@ -23,11 +24,13 @@ class LoginRequest(BaseModel):
 
 class LogoutRequest(BaseModel):
     token:str
+    
 
 class UserController:
+    
+    # """Handles user login, verifies credentials, and generates a JWT token."""
     @staticmethod
     async def login(login_data:LoginRequest):
-        """Handles user login, verifies credentials, and generates a JWT token."""
         user = await UserModel.get_user_by_email(login_data.email)
         # print("IN LOGIN API")
         if not user or not AuthUtils.verify_password(login_data.password, user["password"]):
@@ -38,9 +41,10 @@ class UserController:
 
         return {"message": "Login successful", "data": user}
 
+    
+    # """Handles user signup and inserts new user into the database."""
     @staticmethod
     async def signup(signup_data):
-        """Handles user signup and inserts new user into the database."""
         existing_user = await UserModel.get_user_by_email(signup_data.email)
         if existing_user:
             raise HTTPException(status_code=400, detail="Email already registered")
@@ -60,9 +64,10 @@ class UserController:
 
         return response
     
+    
+    # """Handles user logout by deleting the session token from the database."""
     @staticmethod
     async def logout(current_user: dict):
-        """Handles user logout by deleting the session token from the database."""
 
         # ✅ Debugging Step: Print received token
         print("Received logout request with user:", current_user)
@@ -81,9 +86,10 @@ class UserController:
 
         return {"message": "Logged out successfully"}
     
+    
+    # """Fetch reports for a specific user using a LEFT JOIN raw query."""
     @staticmethod
     async def get_reports_by_user_id(user_id: int):
-        """Fetch reports for a specific user using a LEFT JOIN raw query."""
         query = """
         SELECT u.first_name, u.last_name, u.role,u.address, r.report_title, r.status, r.submission_date
         FROM users u
@@ -130,9 +136,10 @@ class UserController:
             cursor.close()
             release_db_connection(conn)
 
+    
+    # """Fetch all users (admin-only)."""
     @staticmethod
     async def get_all_users(current_user: dict = Depends(get_current_user)):
-        # """Fetch all users (admin-only)."""
         print(current_user)
         if current_user["role"] != "admin":
             raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
@@ -159,6 +166,94 @@ class UserController:
                 for row in rows
             ]
             return users
+        except psycopg2.Error as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            cursor.close()
+            release_db_connection(conn)
+    
+    #"""Update User Details (self or admin)"""
+    @staticmethod
+    async def update_user(user_id: int, update_data: UpdateUserRequest, current_user: dict = Depends(get_current_user)):
+        if current_user["id"] != user_id and current_user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="You can only update your own details or must be an admin")
+    
+        print("In Update_User")
+        updates = []
+        params = []
+        if update_data.first_name:
+            updates.append("first_name = %s")
+            params.append(update_data.first_name)
+        if update_data.last_name:
+            updates.append("last_name = %s")
+            params.append(update_data.last_name)
+        if update_data.mobile:
+            updates.append("mobile = %s")
+            params.append(update_data.mobile)
+        if update_data.address:
+            updates.append("address = %s")
+            params.append(update_data.address)
+    
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields to update")
+    
+        updates.append("updated_at = NOW()")
+        params.append(user_id)
+    
+        query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s"
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+    
+        try:
+            cursor.execute(query, params)
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="User not found")
+            conn.commit()
+            return {"message": "User updated successfully"}
+        except psycopg2.Error as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            cursor.close()
+            release_db_connection(conn)
+    
+    
+    # """Delete a User(Admin-only)"""
+    @staticmethod
+    async def delete_user(user_id:int, current_user: dict = Depends(get_current_user)):
+        if current_user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Only admins can delete users")
+        
+        query="delete from users where id = %s"
+        
+        conn=get_db_connection()
+        cursor=conn.cursor()
+        
+        try:
+            cursor.execute(query,(user_id,))
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="User Not Found!")
+            conn.commit()
+            return {"message":"User deleted successfully"}
+        except psycopg2.Error as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            cursor.close()
+            release_db_connection(conn)
+            
+    # """Create a new report for the authenticated user."""
+    @staticmethod
+    async def create_report(report_data: CreateReportRequest, current_user: dict = Depends(get_current_user)):
+        query="""insert into reports (user_id,report_title, report_content, status, submission_date, created_at, updated_at) values (%s, %s, %s, %s, NOW(), NOW(), NOW()) returning id"""
+        
+        conn=get_db_connection
+        cursor=conn.cursor()
+
+        try:
+            cursor.execute(query, (current_user["id"], report_data.report_title,report_data.report_content, report_data.status))
+            report_id= cursor.fetchone()[0]
+            conn.commit()
+            return {"message":"Report created successfully","report_id":report_id}
         except psycopg2.Error as e:
             raise HTTPException(status_code=500, detail=str(e))
         finally:
